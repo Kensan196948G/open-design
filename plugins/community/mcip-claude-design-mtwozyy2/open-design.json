@@ -1,0 +1,22 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "specVersion": "1.0.0",
+  "name": "mcip-claude-design-mtwozyy2",
+  "title": "MCIP Claude Design 設計ブリーフ",
+  "version": "0.1.0",
+  "description": "> このファイルは **Claude Design（claude.ai/design）へそのまま貼り付けて使う**ための指示書である。 > 原典は `doc/MCIP_WebUI設計書.md`（1510 行 / 48 章）。本書はそれを設計エージェントが行動できる形へ圧縮したもので、 > 判断に迷う箇所が出たら原典の該当章を参照する（章番号を各節に付けてある）。 > > 文書版：v1.0 作成日：2026-09-11",
+  "od": {
+    "kind": "skill",
+    "taskKind": "new-generation",
+    "context": {
+      "skills": [
+        {
+          "path": "./SKILL.md"
+        }
+      ]
+    },
+    "capabilities": [
+      "prompt:inject"
+    ]
+  }
+}

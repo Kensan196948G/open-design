@@ -1,0 +1,19 @@
+{
+  "candidateId": "9d3059a3-d1a6-4f03-ba81-ed9d86de4155",
+  "projectId": "7835c07b-96c7-48d5-91ce-c592406e367d",
+  "runId": "36f3fc2b-e535-4500-b8ce-1f8194da6e46",
+  "conversationId": "cd39ffd7-6916-404b-a381-66857380f367",
+  "provenance": {
+    "summary": "Detected from MCIP_ClaudeDesign設計ブリーフ.md after a successful run.",
+    "detectedAt": 1789114956484
+  },
+  "sourceRefs": [
+    {
+      "kind": "file",
+      "value": "MCIP_ClaudeDesign設計ブリーフ.md",
+      "label": "MCIP_ClaudeDesign設計ブリーフ.md",
+      "size": 17100,
+      "copied": true
+    }
+  ]
+}
