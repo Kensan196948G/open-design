@@ -334,4 +334,56 @@ describe('@open-design/dsh-runtime protocol', () => {
     assert.equal(frames.at(-1)?.status, 'cancelled');
     assert.equal(frames.at(-1)?.error, undefined);
   });
+
+  describe('assistant content forwarding', () => {
+    const request = parseHostCommand({
+      v: 1, type: 'execute', request_id: 'run-1', cwd: '/project', prompt: 'create', mcp_servers: [],
+    }) as Parameters<typeof internals.emitSessionEvent>[1];
+    const capture = () => {
+      const lines: string[] = [];
+      return { output: { write: (chunk: string) => lines.push(chunk) }, frames: () => lines.map((line) => JSON.parse(line)) };
+    };
+    const message = (content: unknown[], usage?: unknown) => ({
+      type: 'assistant/message',
+      seq: 3,
+      data: { turn: 1, step: 1, message: { role: 'assistant', content }, ...(usage ? { usage } : {}) },
+    }) as unknown as Parameters<typeof internals.emitSessionEvent>[4];
+    const chunk = (type: 'text-delta' | 'reasoning-delta', text: string) => ({
+      type: 'assistant/chunk', seq: 2, data: { chunk: { type, text } },
+    }) as unknown as Parameters<typeof internals.emitSessionEvent>[4];
+
+    test('forwards final message content when no chunks were recorded (dsh 0.1.6+)', () => {
+      const { output, frames } = capture();
+      const step = internals.newStepStream();
+      const text = internals.emitSessionEvent(output, request, 'p', 'm', message([
+        { type: 'reasoning', text: 'think' },
+        { type: 'text', text: '2' },
+      ]), step);
+      assert.equal(text, '2');
+      assert.deepEqual(frames().map((f) => [f.type, f.content]), [['thinking', 'think'], ['text', '2']]);
+    });
+
+    test('does not repeat content already streamed as chunks (dsh <= 0.1.5)', () => {
+      const { output, frames } = capture();
+      const step = internals.newStepStream();
+      internals.emitSessionEvent(output, request, 'p', 'm', chunk('reasoning-delta', 'think'), step);
+      internals.emitSessionEvent(output, request, 'p', 'm', chunk('text-delta', '2'), step);
+      const text = internals.emitSessionEvent(output, request, 'p', 'm', message([
+        { type: 'reasoning', text: 'think' },
+        { type: 'text', text: '2' },
+      ]), step);
+      assert.equal(text, '');
+      assert.deepEqual(frames().map((f) => [f.type, f.content]), [['thinking', 'think'], ['text', '2']]);
+    });
+
+    test('resets the streamed state for each step', () => {
+      const { output, frames } = capture();
+      const step = internals.newStepStream();
+      internals.emitSessionEvent(output, request, 'p', 'm', chunk('text-delta', 'a'), step);
+      internals.emitSessionEvent(output, request, 'p', 'm', message([{ type: 'text', text: 'a' }]), step);
+      const text = internals.emitSessionEvent(output, request, 'p', 'm', message([{ type: 'text', text: 'b' }]), step);
+      assert.equal(text, 'b');
+      assert.deepEqual(frames().map((f) => f.content), ['a', 'b']);
+    });
+  });
 });

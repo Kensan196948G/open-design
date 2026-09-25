@@ -205,22 +205,41 @@ async function listModelCatalog(ctx: Context): Promise<ModelCatalogEntry[]> {
   return catalog;
 }
 
+/**
+ * Per-step record of which content kinds already streamed as `assistant/chunk`.
+ * DeepSeek Harness 0.1.6+ no longer records `assistant/chunk` session events;
+ * the step's text and reasoning then arrive only in `assistant/message`.
+ */
+type StepStream = { text: boolean; reasoning: boolean };
+
+function newStepStream(): StepStream {
+  return { text: false, reasoning: false };
+}
+
+/**
+ * Forward one session event as protocol frames.
+ * @returns assistant text emitted from a completed `assistant/message` whose
+ * step streamed no text deltas, so the caller can include it in the output.
+ */
 function emitSessionEvent(
   output: Output,
   request: ExecuteCommand,
   provider: string,
   model: string,
   event: SessionEvent,
-): void {
+  step: StepStream = newStepStream(),
+): string {
   switch (event.type) {
     case 'assistant/chunk': {
       const chunk = event.data.chunk;
       if (chunk.type === 'text-delta' && chunk.text !== '') {
+        step.text = true;
         writeFrame(output, { v: 1, type: 'text', request_id: request.request_id, content: chunk.text });
       } else if (chunk.type === 'reasoning-delta' && chunk.text !== '') {
+        step.reasoning = true;
         writeFrame(output, { v: 1, type: 'thinking', request_id: request.request_id, content: chunk.text });
       }
-      return;
+      return '';
     }
     case 'tool/call':
       writeFrame(output, {
@@ -231,7 +250,7 @@ function emitSessionEvent(
         name: event.data.name,
         arguments: event.data.arguments,
       });
-      return;
+      return '';
     case 'tool/result':
       writeFrame(output, {
         v: 1,
@@ -242,12 +261,24 @@ function emitSessionEvent(
         output: contentText(event.data.message.content[0].content),
         is_error: event.data.message.content[0].isError === true,
       });
-      return;
-    case 'assistant/message':
+      return '';
+    case 'assistant/message': {
+      let text = '';
+      for (const block of event.data.message.content) {
+        if (block.type === 'reasoning' && !step.reasoning && block.text !== '') {
+          writeFrame(output, { v: 1, type: 'thinking', request_id: request.request_id, content: block.text });
+        } else if (block.type === 'text' && !step.text && block.text !== '') {
+          writeFrame(output, { v: 1, type: 'text', request_id: request.request_id, content: block.text });
+          text += block.text;
+        }
+      }
+      step.text = false;
+      step.reasoning = false;
       if (event.data.usage) writeFrame(output, usageFrame(request.request_id, provider, model, event.data.usage));
-      return;
+      return text;
+    }
     default:
-      return;
+      return '';
   }
 }
 
@@ -275,9 +306,10 @@ async function execute(
     installModelSelection(agentCtx, selected);
   };
   let disposeEvent = () => {};
+  const step = newStepStream();
   const onSessionEvent = (session: { id: unknown }, event: SessionEvent) => {
     if (String(session.id) !== String(sessionId) || event.seq < firstSeq) return;
-    emitSessionEvent(output, request, selection.provider, selection.model, event);
+    assistantOutput += emitSessionEvent(output, request, selection.provider, selection.model, event, step);
     if (event.type === 'assistant/chunk' && event.data.chunk.type === 'text-delta') {
       assistantOutput += event.data.chunk.text;
     }
@@ -476,6 +508,7 @@ export const internals = {
   errorFacts,
   emitSessionEvent,
   execute,
+  newStepStream,
   listModelCatalog,
   requestProfileExit,
   resultStatus,
